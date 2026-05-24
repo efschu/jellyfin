@@ -18,7 +18,8 @@ namespace MediaBrowser.Model.Dlna
             new ResolutionConfiguration(1280, 6000000),
             new ResolutionConfiguration(1920, 13500000),
             new ResolutionConfiguration(2560, 28000000),
-            new ResolutionConfiguration(3840, 50000000)
+            new ResolutionConfiguration(3840, 50000000),
+            new ResolutionConfiguration(7680, 100000000)
         ];
 
         public static ResolutionOptions Normalize(

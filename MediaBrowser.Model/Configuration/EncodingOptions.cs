@@ -62,6 +62,17 @@ public class EncodingOptions
         AllowOnDemandMetadataBasedKeyframeExtractionForExtensions = ["mkv"];
         HardwareDecodingCodecs = ["h264", "vc1"];
         HlsAudioSeekStrategy = HlsAudioSeekStrategy.DisableAccurateSeek;
+        // Vspipe / 4kx2 quality settings
+        EnableVspipeUpscaling = false;
+        VspipePath = "vspipe";
+        VspipeScriptPath = string.Empty;
+        VspipeUpscaleModel = "realesr-animevideov3";
+        VspipeInterpolationModel = "rife-4.25";
+        VspipeTargetWidth = 3840;
+        VspipeTargetHeight = 2160;
+        VspipeTargetFpsNum = 60000;
+        VspipeTargetFpsDen = 1001;
+        VspipePixelFormat = "YUV420P10";
     }
 
     /// <summary>
@@ -309,4 +320,54 @@ public class EncodingOptions
     /// </summary>
     [DefaultValue(HlsAudioSeekStrategy.DisableAccurateSeek)]
     public HlsAudioSeekStrategy HlsAudioSeekStrategy { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether vspipe upscaling is enabled for 4kx2 quality.
+    /// </summary>
+    public bool EnableVspipeUpscaling { get; set; }
+
+    /// <summary>
+    /// Gets or sets the path to the vspipe executable.
+    /// </summary>
+    public string VspipePath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the path to a custom VapourSynth script. When empty, a default script is generated.
+    /// </summary>
+    public string VspipeScriptPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the upscaling model (e.g., realesr-animevideov3, realesrgan-x4plus).
+    /// </summary>
+    public string VspipeUpscaleModel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the frame interpolation model (e.g., rife-4.25, amtvcflow).
+    /// </summary>
+    public string VspipeInterpolationModel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target output width after upscaling.
+    /// </summary>
+    public int VspipeTargetWidth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the target output height after upscaling.
+    /// </summary>
+    public int VspipeTargetHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the numerator for target framerate (e.g., 60000 for ~60fps).
+    /// </summary>
+    public int VspipeTargetFpsNum { get; set; }
+
+    /// <summary>
+    /// Gets or sets the denominator for target framerate (e.g., 1001 for NTSC rates).
+    /// </summary>
+    public int VspipeTargetFpsDen { get; set; }
+
+    /// <summary>
+    /// Gets or sets the pixel format for vspipe output (e.g., YUV420P10, YUV420P8).
+    /// </summary>
+    public string VspipePixelFormat { get; set; }
 }

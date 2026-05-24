@@ -382,6 +382,8 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
 
         await AcquireResources(state, cancellationTokenSource).ConfigureAwait(false);
 
+        var encodingOptions = _serverConfigurationManager.GetEncodingOptions();
+
         if (state.VideoRequest is not null && !EncodingHelper.IsCopyCodec(state.OutputVideoCodec))
         {
             var user = userId.IsEmpty() ? null : _userManager.GetUserById(userId);
@@ -414,6 +416,143 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
             }
         }
 
+        // Check if 4kx2 vspipe pipeline should be used
+        var is4kx2Mode = state.VideoRequest is not null
+            && encodingOptions.EnableVspipeUpscaling
+            && state.VideoStream is not null
+            && (state.VideoStream.Width ?? 0) >= 1920;
+
+        if (is4kx2Mode)
+        {
+            _logger.LogInformation("Starting 4kx2 vspipe pipeline for {MediaPath}", state.MediaPath);
+
+            var pipeline = new VspipePipeline(
+                encodingOptions.TranscodingTempPath,
+                _serverConfigurationManager.ApplicationPaths.LogDirectoryPath);
+
+            var videoStream = state.VideoStream!;
+            var audioStream = state.AudioStream;
+
+            var videoCodec = state.ActualOutputVideoCodec ?? state.OutputVideoCodec ?? "h264";
+            var audioCodec = state.ActualOutputAudioCodec ?? state.OutputAudioCodec ?? "aac";
+
+            var segmentLength = state.SegmentLength > 0 ? state.SegmentLength : 30;
+            var segmentContainer = state.Request.SegmentContainer ?? "ts";
+
+            var audioStreamIndex = audioStream is not null ? audioStream.Index : 0;
+
+            pipeline.Start(
+                sourcePath: state.MediaPath,
+                outputPath: outputPath,
+                encoderPath: _mediaEncoder.EncoderPath,
+                encodingOptions: encodingOptions,
+                videoStreamIndex: videoStream.Index,
+                audioStreamIndex: audioStreamIndex,
+                segmentLength: segmentLength,
+                segmentContainer: segmentContainer,
+                videoCodec: videoCodec,
+                audioCodec: audioCodec,
+                videoBitrate: state.OutputVideoBitrate,
+                audioBitrate: state.OutputAudioBitrate,
+                width: videoStream.Width ?? 1920,
+                height: videoStream.Height ?? 1080,
+                pixelFormat: encodingOptions.VspipePixelFormat,
+                inputFramerate: videoStream.ReferenceFrameRate,
+                hardwareAccelerationType: encodingOptions.HardwareAccelerationType == HardwareAccelerationType.none ? null : encodingOptions.HardwareAccelerationType.ToString(),
+                hwDevice: encodingOptions.VaapiDevice);
+
+            var vspipeProcess = pipeline.FfmpegEncoder!;
+
+            var vspipeTranscodingJob = OnTranscodeBeginning(
+                outputPath,
+                state.Request.PlaySessionId,
+                state.MediaSource.LiveStreamId,
+                Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture),
+                transcodingJobType,
+                vspipeProcess,
+                state.Request.DeviceId,
+                state,
+                cancellationTokenSource);
+
+            _logger.LogInformation("4kx2 pipeline started");
+
+            var vspipeLogPrefix = "FFmpeg.4kx2-";
+
+            var vspipeLogFilePath = Path.Combine(
+                _serverConfigurationManager.ApplicationPaths.LogDirectoryPath,
+                $"{vspipeLogPrefix}{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{state.Request.MediaSourceId}_{Guid.NewGuid().ToString()[..8]}.log");
+
+            Stream vspipeLogStream = new FileStream(
+                vspipeLogFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.Read,
+                IODefaults.FileStreamBufferSize,
+                FileOptions.Asynchronous);
+
+            await JsonSerializer.SerializeAsync(vspipeLogStream, state.MediaSource, cancellationToken: cancellationTokenSource.Token).ConfigureAwait(false);
+            var vspipeCommandLineLogMessageBytes = Encoding.UTF8.GetBytes(
+                Environment.NewLine
+                + Environment.NewLine
+                + vspipeProcess.StartInfo.FileName + " " + vspipeProcess.StartInfo.Arguments
+                + Environment.NewLine
+                + Environment.NewLine);
+
+            await vspipeLogStream.WriteAsync(vspipeCommandLineLogMessageBytes, cancellationTokenSource.Token).ConfigureAwait(false);
+
+            vspipeProcess.Exited += (_, _) => OnFfMpegProcessExited(vspipeProcess, vspipeTranscodingJob, state);
+
+            try
+            {
+                vspipeProcess.Start();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting FFmpeg");
+                OnTranscodeFailedToStart(outputPath, transcodingJobType, state);
+
+                throw;
+            }
+
+            _logger.LogDebug("Launched FFmpeg process");
+            state.TranscodingJob = vspipeTranscodingJob;
+
+            _ = new JobLogger(_logger).StartStreamingLog(state, vspipeProcess.StandardError, vspipeLogStream);
+
+            var vspipeTargetFile = state.WaitForPath ?? outputPath;
+            _logger.LogDebug("Waiting for the creation of {0}", vspipeTargetFile);
+            while (!File.Exists(vspipeTargetFile) && !vspipeTranscodingJob.HasExited)
+            {
+                await Task.Delay(100, cancellationTokenSource.Token).ConfigureAwait(false);
+            }
+
+            _logger.LogDebug("File {0} created or transcoding has finished", vspipeTargetFile);
+
+            if (state.IsInputVideo && vspipeTranscodingJob.Type == TranscodingJobType.Progressive && !vspipeTranscodingJob.HasExited)
+            {
+                await Task.Delay(1000, cancellationTokenSource.Token).ConfigureAwait(false);
+
+                if (state.ReadInputAtNativeFramerate && !vspipeTranscodingJob.HasExited)
+                {
+                    await Task.Delay(1500, cancellationTokenSource.Token).ConfigureAwait(false);
+                }
+            }
+
+            if (!vspipeTranscodingJob.HasExited)
+            {
+                StartThrottler(state, vspipeTranscodingJob);
+                StartSegmentCleaner(state, vspipeTranscodingJob);
+            }
+            else if (vspipeTranscodingJob.ExitCode != 0)
+            {
+                throw new FfmpegException(string.Format(CultureInfo.InvariantCulture, "FFmpeg exited with code {0}", vspipeTranscodingJob.ExitCode));
+            }
+
+            _logger.LogDebug("StartFfMpeg() finished successfully");
+
+            return vspipeTranscodingJob;
+        }
+
         var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -421,9 +560,6 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
                 WindowStyle = ProcessWindowStyle.Hidden,
                 CreateNoWindow = true,
                 UseShellExecute = false,
-
-                // Must consume both stdout and stderr or deadlocks may occur
-                // RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
                 FileName = _mediaEncoder.EncoderPath,
@@ -465,7 +601,6 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
             _serverConfigurationManager.ApplicationPaths.LogDirectoryPath,
             $"{logFilePrefix}{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{state.Request.MediaSourceId}_{Guid.NewGuid().ToString()[..8]}.log");
 
-        // FFmpeg writes debug/error info to stderr. This is useful when debugging so let's put it in the log directory.
         Stream logStream = new FileStream(
             logFilePath,
             FileMode.Create,
@@ -501,10 +636,8 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
         _logger.LogDebug("Launched FFmpeg process");
         state.TranscodingJob = transcodingJob;
 
-        // Important - don't await the log task or we won't be able to kill FFmpeg when the user stops playback
         _ = new JobLogger(_logger).StartStreamingLog(state, process.StandardError, logStream);
 
-        // Wait for the file to exist before proceeding
         var ffmpegTargetFile = state.WaitForPath ?? outputPath;
         _logger.LogDebug("Waiting for the creation of {0}", ffmpegTargetFile);
         while (!File.Exists(ffmpegTargetFile) && !transcodingJob.HasExited)
