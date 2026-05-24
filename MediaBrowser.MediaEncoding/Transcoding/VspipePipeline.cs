@@ -108,6 +108,7 @@ public sealed class VspipePipeline : IDisposable
 
         var scriptPath = GenerateVspipeScript(
             encodingOptions,
+            pipeVideoRaw,
             width,
             height,
             pixelFormat,
@@ -136,7 +137,7 @@ public sealed class VspipePipeline : IDisposable
 
         var decoderArgs = $"{videoArgs} {audioArgs} -an -c:v:0 copy -c:a:0 copy -y /dev/null";
 
-        var vspipeArgs = $"-c y4m {scriptPath} {pipeVideoUpscaled}";
+        var vspipeArgs = $"-p {scriptPath} {pipeVideoUpscaled}";
 
         var encoderArgs = BuildEncoderArgs(
             pipeVideoUpscaled,
@@ -239,6 +240,7 @@ public sealed class VspipePipeline : IDisposable
 
     private string GenerateVspipeScript(
         EncodingOptions encodingOptions,
+        string inputPipe,
         int sourceWidth,
         int sourceHeight,
         string pixelFormat,
@@ -263,9 +265,10 @@ public sealed class VspipePipeline : IDisposable
 
         script.AppendLine("import vapoursynth as vs");
         script.AppendLine("from vapoursynth import core");
+        script.AppendLine("import vsrawsource as raws");
         script.AppendLine();
-        script.AppendLine($"# Read raw YUV from stdin");
-        script.AppendLine($"clip = core.raws.Source(\"-\", width={sourceWidth}, height={sourceHeight}, src_fmt=\"{pixelFormat}\", fpsnum={int.Parse(fpsStr) * fpsDen}, fpsden={fpsDen})");
+        script.AppendLine($"# Read raw video from named pipe via vsrawsource");
+        script.AppendLine($"clip = raws.Source(\"{inputPipe}\", width={sourceWidth}, height={sourceHeight}, fmt=\"{pixelFormat}\", fpsnum={int.Parse(fpsStr) * fpsDen}, fpsden={fpsDen})");
         script.AppendLine();
 
         if (encodingOptions.VspipeUpscaleModel.Contains("realesr", StringComparison.OrdinalIgnoreCase))
