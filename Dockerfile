@@ -1,16 +1,6 @@
 # ============================================================
 # Jellyfin with FFmpeg VapourSynth Filter Support
 # ============================================================
-# This Dockerfile builds Jellyfin with FFmpeg that has the
-# VapourSynth filter (-vf vapoursynth=...) built-in.
-#
-# Usage:
-#   docker build -t jellyfin-vsfilter .
-# ============================================================
-
-# ============================================================
-# Stage 1: Build FFmpeg with VapourSynth support
-# ============================================================
 FROM ubuntu:22.04 AS ffmpeg-builder
 
 # Limit build threads to 4 for stability
@@ -19,23 +9,24 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential cmake pkg-config nasm yasm libtool \
+    build-essential cmake pkg-config nasm yasm libtool autoconf automake \
     libc6-dev wget git \
     libssl-dev \
     python3 python3-pip python3-dev \
     python3-numpy cython3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Build VapourSynth from source
+# Create build directory
+RUN mkdir -p /build
+
+# Build VapourSynth from source using autotools
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
-RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DCMAKE_DISABLE_PREBUILD=ON \
-    -DREGEX_DISABLED=ON \
-    && cmake --build build -j4 \
-    && cmake --install build \
-    && ldconfig
+# Run autogen to generate configure
+RUN ./autogen.sh && \
+    ./configure --disable-vfw32 --disable-avisynth --disable-avisynthplus --disable-python3 PREFIX=/usr/local && \
+    make -j4 && make install && ldconfig
 
 # Install video codec dependencies
 RUN apt-get update && apt-get install -y \
