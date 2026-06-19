@@ -119,6 +119,7 @@ RUN ldconfig
 
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
+ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
 
 # Create directories for VapourSynth scripts and models
 
