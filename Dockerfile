@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y \
     python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 
-    # Install specific Cython version compatible with VapourSynth R73
-RUN pip3 install cython==0.29.37
+    # Install Cython 3.x for Python 3.10+ compatibility
+RUN pip3 install cython3
 
 # Create build directory
 RUN mkdir -p /build
