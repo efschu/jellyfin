@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
     # Install Cython 3.x for Python 3.10+ compatibility
-RUN pip3 install cython3
+RUN pip3 install --upgrade pip && pip3 install cython
 
 # Create build directory
 RUN mkdir -p /build
