@@ -310,4 +310,56 @@ public class EncodingOptions
     /// </summary>
     [DefaultValue(HlsAudioSeekStrategy.TrimCopiedAudio)]
     public HlsAudioSeekStrategy HlsAudioSeekStrategy { get; set; }
+    /// <summary>
+    /// Gets or sets a value indicating whether the FFmpeg VapourSynth filter pipeline is enabled for 4kx2 quality.
+    /// This uses FFmpeg's built-in VapourSynth filter (-vf vapoursynth=...) instead of standard transcoding.
+    /// </summary>
+    public bool EnableVsFilterPipeline { get; set; }
+    /// <summary>
+    /// Gets or sets the VS Filter preset name.
+    /// Presets: "anime-upscaled" (2x upscale), "anime-interpolated" (2x + 60fps), "custom"
+    /// </summary>
+    public string VsFilterPreset { get; set; } = "anime-upscaled";
+    /// <summary>
+    /// Gets or sets a custom VapourSynth script to use with the VS Filter pipeline.
+    /// When empty, the script is generated based on the preset and model settings.
+    /// </summary>
+    public string VsFilterCustomScript { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the upscaling model for VS Filter (e.g., "realesr-animevideov3").
+    /// </summary>
+    public string VsUpscaleModel { get; set; } = "realesr-animevideov3";
+    /// <summary>
+    /// Gets or sets the frame interpolation model for VS Filter (e.g., "rife-4.25").
+    /// </summary>
+    public string VsInterpolationModel { get; set; } = "rife-4.25";
+    /// <summary>
+    /// Gets or sets the target output width after VS processing.
+    /// </summary>
+    public int VsTargetWidth { get; set; } = 3840;
+    /// <summary>
+    /// Gets or sets the target output height after VS processing.
+    /// </summary>
+    public int VsTargetHeight { get; set; } = 2160;
+    /// <summary>
+    /// Gets or sets the numerator for target framerate (e.g., 60000 for ~60fps).
+    /// </summary>
+    public int VsTargetFpsNum { get; set; } = 60000;
+    /// <summary>
+    /// Gets or sets the denominator for target framerate (e.g., 1001 for NTSC).
+    /// </summary>
+    public int VsTargetFpsDen { get; set; } = 1001;
+    /// <summary>
+    /// Gets or sets the pixel format for VS Filter output (e.g., YUV420P10, YUV420P8).
+    /// </summary>
+    public string VsPixelFormat { get; set; } = "YUV420P10";
+    /// <summary>
+    /// Gets or sets the number of threads for VapourSynth processing (0 = auto-detect).
+    /// </summary>
+    public int VsThreads { get; set; }
+    /// <summary>
+    /// Gets or sets custom FFmpeg encoder arguments for VS Filter output encoding.
+    /// Example: "-preset fast -crf 18 -b:v 50M"
+    /// </summary>
+    public string VsEncoderArgs { get; set; } = string.Empty;
 }
