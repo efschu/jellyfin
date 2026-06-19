@@ -121,10 +121,11 @@ ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 
 # Create directories for VapourSynth scripts and models
-USER jellyfin
+
 RUN mkdir -p /config/vapoursynth \
     && mkdir -p /config/vapoursynth/models \
-    && mkdir -p /cache/transcodes
+    && mkdir -p /cache/transcodes \
+    && chown -R 1000:1000 /config /cache
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
