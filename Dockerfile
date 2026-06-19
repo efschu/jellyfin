@@ -94,10 +94,9 @@ FROM jellyfin/jellyfin:10.9
 
 USER root
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
-    libdrm2 libva2 libva-drm2 \
+    libdrm2 libva2 libva-drm2 libasound2 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -112,12 +111,10 @@ COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libasound.so* /usr/lib/x86_64-linux-gnu/ 2>/dev/null || true
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
-# Create proper symlinks for shared libraries
 # First run ldconfig to set up the cache, then create explicit .so symlinks
 RUN ldconfig \
     && for lib in /usr/local/lib/lib*.so.*; do \
