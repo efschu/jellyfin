@@ -96,7 +96,7 @@ USER root
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
-    libdrm2 libva2 libva-drm2 libasound2 libsndio7 \
+    libdrm2 libva2 libva-drm2 libasound2 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -114,6 +114,7 @@ COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # First run ldconfig to set up the cache, then create explicit .so symlinks
 RUN ldconfig \
