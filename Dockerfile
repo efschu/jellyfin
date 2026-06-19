@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 
-    # Install Cython 3.x for Python 3.10+ compatibility
+# Install specific Cython version compatible with VapourSynth R73
 RUN pip3 install --upgrade pip && pip3 install cython
 
 # Create build directory
@@ -30,17 +30,15 @@ RUN ./autogen.sh && \
     ./configure --disable-static PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
-# Build VapourSynth from source
+# Build VapourSynth from source using autotools
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
-# Run configure without Python options (R73 doesn't support them)
 RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
-    # Build dav1d from source (ubuntu has 0.9.x, need >= 1.0.0)
-    # Build libvpl from source (ubuntu has 2.5.x, need >= 2.6)
+# Install video codec dependencies
 RUN apt-get update && apt-get install -y \
     libx264-dev libx265-dev libnuma-dev libvpx-dev \
     libmp3lame-dev libopus-dev \
@@ -48,16 +46,16 @@ RUN apt-get update && apt-get install -y \
     libsdl2-dev libaom-dev nasm meson git cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Build dav1d >= 1.0.0 from source
+# Build dav1d >= 1.0.0 from source (ubuntu has 0.9.x)
 WORKDIR /build
 RUN git clone --depth 1 --branch 1.4.3 https://github.com/videolan/dav1d.git
 WORKDIR /build/dav1d
 RUN meson setup build --prefix=/usr/local --buildtype=release && \
     ninja -C build && ninja -C build install && ldconfig
 
-# Build libvpl >= 2.6 from source
+# Build libvpl >= 2.6 from source (ubuntu has 2.5.x, latest is v2023.4.0)
 WORKDIR /build
-RUN git clone --depth 1 --branch v2.13.1 https://github.com/intel/libvpl.git
+RUN git clone --depth 1 --branch v2023.4.0 https://github.com/intel/libvpl.git
 WORKDIR /build/libvpl
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
