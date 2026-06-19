@@ -40,11 +40,12 @@ RUN ./autogen.sh && \
     make -j4 && make install && ldconfig
 
     # Build dav1d from source (ubuntu has 0.9.x, need >= 1.0.0)
+    # Build libvpl from source (ubuntu has 2.5.x, need >= 2.6)
 RUN apt-get update && apt-get install -y \
     libx264-dev libx265-dev libnuma-dev libvpx-dev \
     libmp3lame-dev libopus-dev \
     libass-dev libfreetype6-dev libfribidi-dev libharfbuzz-dev \
-    libsdl2-dev libvpl-dev libaom-dev nasm meson \
+    libsdl2-dev libaom-dev nasm meson git cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Build dav1d >= 1.0.0 from source
@@ -53,6 +54,15 @@ RUN git clone --depth 1 --branch 1.4.3 https://github.com/videolan/dav1d.git
 WORKDIR /build/dav1d
 RUN meson setup build --prefix=/usr/local --buildtype=release && \
     ninja -C build && ninja -C build install && ldconfig
+
+# Build libvpl >= 2.6 from source
+WORKDIR /build
+RUN git clone --depth 1 --branch v2.13.1 https://github.com/intel/libvpl.git
+WORKDIR /build/libvpl
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF && \
+    cmake --build build && cmake --install build && ldconfig
 
 # Clone and build FFmpeg with VapourSynth support
 WORKDIR /build
