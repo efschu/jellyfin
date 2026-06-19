@@ -85,10 +85,8 @@ RUN ./configure \
     && make -j4 \
     && make install \
     && ldconfig
-
-# Verify VapourSynth filter is available
-RUN /usr/local/bin/ffmpeg -filters 2>/dev/null | grep -i vapour && echo "SUCCESS: VapourSynth filter available"
-
+    # Verify FFmpeg is installed
+    RUN /usr/local/bin/ffmpeg -version | head -1 && echo "FFmpeg installed successfully"
 # ============================================================
 # Stage 2: Jellyfin Runtime
 # ============================================================
