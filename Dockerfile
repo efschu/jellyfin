@@ -111,15 +111,22 @@ COPY --from=ffmpeg-builder /usr/local/lib/libswscale.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so* /usr/local/lib/
+COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
-RUN ldconfig
+RUN ldconfig \
+    && for lib in /usr/local/lib/*.so.*; do \
+         if [ -f "$lib" ] && [ ! -L "$lib" ]; then \
+           base=$(basename "$lib" | sed 's/\.[0-9]*\.[0-9]*$//'); \
+           ln -sf "$(basename $lib)" "$lib" 2>/dev/null || true; \
+         fi \
+       done
 
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
-ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Create directories for VapourSynth scripts and models
 
