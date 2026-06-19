@@ -96,7 +96,7 @@ USER root
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
-    libdrm2 libva2 libva-drm2 libasound2 libxv1 \
+    libdrm2 libva2 libva-drm2 libasound2 libxv1 libvpl2 \
     libxcb1 libxcb-shm0 libxcb-xfixes0 \
     libx11-6 libxext6 \
     libgl1-mesa-glx \
@@ -111,17 +111,10 @@ RUN apt-get update && apt-get install -y \
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
-COPY --from=ffmpeg-builder /usr/local/lib/libavcodec.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libavformat.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libavutil.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libswscale.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so* /usr/local/lib/
+# Copy all libraries from ffmpeg-builder
+COPY --from=ffmpeg-builder /usr/local/lib/lib*.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # First run ldconfig to set up the cache, then create explicit .so symlinks
