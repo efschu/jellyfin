@@ -13,8 +13,11 @@ RUN apt-get update && apt-get install -y \
     libc6-dev wget git \
     libssl-dev \
     python3 python3-pip python3-dev \
-    python3-numpy cython3 \
+    python3-numpy \
     && rm -rf /var/lib/apt/lists/*
+
+# Install specific Cython version compatible with VapourSynth R73
+RUN pip3 install --break-system-packages cython==0.29.37
 
 # Create build directory
 RUN mkdir -p /build
@@ -31,8 +34,9 @@ RUN ./autogen.sh && \
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
+# Run configure without Python options (R73 doesn't support them)
 RUN ./autogen.sh && \
-    ./configure --disable-vfw32 --disable-avisynth --disable-avisynthplus --disable-python3 PREFIX=/usr/local && \
+    ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
 # Install video codec dependencies
