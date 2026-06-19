@@ -7,20 +7,27 @@ FROM ubuntu:22.04 AS ffmpeg-builder
 ENV MAKEFLAGS="-j4"
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies including zimg for VapourSynth
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential cmake pkg-config nasm yasm libtool autoconf automake \
     libc6-dev wget git \
     libssl-dev \
     python3 python3-pip python3-dev \
     python3-numpy cython3 \
-    libzimg-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create build directory
 RUN mkdir -p /build
 
-# Build VapourSynth from source using autotools
+# Build zimg from source (ubuntu has 3.0.3, need >= 3.0.5)
+WORKDIR /build
+RUN git clone --depth 1 --branch zimg-3.0.5 https://github.com/sekrit-twc/zimg.git
+WORKDIR /build/zimg
+RUN ./autogen.sh && \
+    ./configure --disable-static PREFIX=/usr/local && \
+    make -j4 && make install && ldconfig
+
+# Build VapourSynth from source
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
@@ -89,6 +96,7 @@ COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
+COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 RUN ldconfig
 
