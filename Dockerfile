@@ -7,13 +7,14 @@ FROM ubuntu:22.04 AS ffmpeg-builder
 ENV MAKEFLAGS="-j4"
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
+# Install build dependencies including zimg for VapourSynth
 RUN apt-get update && apt-get install -y \
     build-essential cmake pkg-config nasm yasm libtool autoconf automake \
     libc6-dev wget git \
     libssl-dev \
     python3 python3-pip python3-dev \
     python3-numpy cython3 \
+    libzimg-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create build directory
@@ -23,7 +24,6 @@ RUN mkdir -p /build
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
-# Run autogen to generate configure
 RUN ./autogen.sh && \
     ./configure --disable-vfw32 --disable-avisynth --disable-avisynthplus --disable-python3 PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
