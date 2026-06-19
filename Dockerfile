@@ -116,11 +116,12 @@ COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
+# Create proper symlinks for shared libraries
+# First run ldconfig to set up the cache, then create explicit .so symlinks
 RUN ldconfig \
-    && for lib in /usr/local/lib/*.so.*; do \
+    && for lib in /usr/local/lib/lib*.so.*; do \
          if [ -f "$lib" ] && [ ! -L "$lib" ]; then \
-           base=$(basename "$lib" | sed 's/\.[0-9]*\.[0-9]*$//'); \
-           ln -sf "$(basename $lib)" "$lib" 2>/dev/null || true; \
+           ln -sf "$(basename $lib)" "${lib%.*}" 2>/dev/null || true; \
          fi \
        done
 
