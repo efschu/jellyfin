@@ -112,6 +112,7 @@ COPY --from=ffmpeg-builder /usr/local/lib/libswresample.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libavfilter.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libpostproc.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libavdevice.so* /usr/local/lib/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libasound.so* /usr/lib/x86_64-linux-gnu/ 2>/dev/null || true
 COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/local/lib/libzimg.so* /usr/local/lib/
