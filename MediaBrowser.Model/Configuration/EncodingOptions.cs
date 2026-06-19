@@ -70,9 +70,20 @@ public class EncodingOptions
         VspipeInterpolationModel = "rife-4.25";
         VspipeTargetWidth = 3840;
         VspipeTargetHeight = 2160;
-        VspipeTargetFpsNum = 60000;
-        VspipeTargetFpsDen = 1001;
         VspipePixelFormat = "YUV420P10";
+        // FFmpeg VS Filter Pipeline settings (new approach - replaces vspipe)
+        EnableVsFilterPipeline = false;
+        VsFilterPreset = "anime-upscaled";
+        VsFilterCustomScript = string.Empty;
+        VsUpscaleModel = "realesr-animevideov3";
+        VsInterpolationModel = "rife-4.25";
+        VsTargetWidth = 3840;
+        VsTargetHeight = 2160;
+        VsTargetFpsNum = 60000;
+        VsTargetFpsDen = 1001;
+        VsPixelFormat = "YUV420P10";
+        VsThreads = 0;
+        VsEncoderArgs = string.Empty;
     }
 
     /// <summary>
@@ -364,10 +375,59 @@ public class EncodingOptions
     /// <summary>
     /// Gets or sets the denominator for target framerate (e.g., 1001 for NTSC rates).
     /// </summary>
-    public int VspipeTargetFpsDen { get; set; }
-
     /// <summary>
     /// Gets or sets the pixel format for vspipe output (e.g., YUV420P10, YUV420P8).
     /// </summary>
     public string VspipePixelFormat { get; set; }
+    /// <summary>
+    /// Gets or sets a value indicating whether the FFmpeg VS Filter pipeline is enabled for 4kx2 quality.
+    /// This uses FFmpeg's built-in VapourSynth filter (-vf vapoursynth=...) instead of external vspipe process.
+    /// </summary>
+    public bool EnableVsFilterPipeline { get; set; }
+    /// <summary>
+    /// Gets or sets the VS Filter preset name (e.g., "anime-upscaled", "anime-interpolated", "custom").
+    /// </summary>
+    public string VsFilterPreset { get; set; }
+    /// <summary>
+    /// Gets or sets a custom VapourSynth script to use with the VS Filter pipeline.
+    /// When empty, the script is generated based on the preset and model settings.
+    /// </summary>
+    public string VsFilterCustomScript { get; set; }
+    /// <summary>
+    /// Gets or sets the upscaling model for VS Filter (e.g., "realesr-animevideov3", "realesrgan-x4plus").
+    /// </summary>
+    public string VsUpscaleModel { get; set; }
+    /// <summary>
+    /// Gets or sets the frame interpolation model for VS Filter (e.g., "rife-4.25", "amtvcflow").
+    /// </summary>
+    public string VsInterpolationModel { get; set; }
+    /// <summary>
+    /// Gets or sets the target output width after VS processing.
+    /// </summary>
+    public int VsTargetWidth { get; set; }
+    /// <summary>
+    /// Gets or sets the target output height after VS processing.
+    /// </summary>
+    public int VsTargetHeight { get; set; }
+    /// <summary>
+    /// Gets or sets the numerator for target framerate (e.g., 60000 for ~60fps).
+    /// </summary>
+    public int VsTargetFpsNum { get; set; }
+    /// <summary>
+    /// Gets or sets the denominator for target framerate (e.g., 1001 for NTSC rates).
+    /// </summary>
+    public int VsTargetFpsDen { get; set; }
+    /// <summary>
+    /// Gets or sets the pixel format for VS Filter output (e.g., YUV420P10, YUV420P8).
+    /// </summary>
+    public string VsPixelFormat { get; set; }
+    /// <summary>
+    /// Gets or sets the number of threads for VapourSynth processing (0 = auto-detect).
+    /// </summary>
+    public int VsThreads { get; set; }
+    /// <summary>
+    /// Gets or sets custom FFmpeg encoder arguments for VS Filter output encoding.
+    /// Example: "-preset fast -crf 18 -b:v 50M"
+    /// </summary>
+    public string VsEncoderArgs { get; set; }
 }

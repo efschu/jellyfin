@@ -416,16 +416,90 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
             }
         }
 
-        // Check if 4kx2 vspipe pipeline should be used
-        var is4kx2Mode = state.VideoRequest is not null
-            && encodingOptions.EnableVspipeUpscaling
+        // Check if 4kx2 VS Filter pipeline should be used (new FFmpeg approach)
+        var isVsFilterMode = state.VideoRequest is not null
+            && encodingOptions.EnableVsFilterPipeline
             && state.VideoStream is not null
             && (state.VideoStream.Width ?? 0) >= 1920;
-
-        if (is4kx2Mode)
+        // Fallback to old vspipe pipeline if VS Filter is not enabled
+        var is4kx2Mode = state.VideoRequest is not null
+            && encodingOptions.EnableVspipeUpscaling
+            && !encodingOptions.EnableVsFilterPipeline  // VS Filter takes priority
+            && state.VideoStream is not null
+            && (state.VideoStream.Width ?? 0) >= 1920;
+        if (isVsFilterMode)
         {
-            _logger.LogInformation("Starting 4kx2 vspipe pipeline for {MediaPath}", state.MediaPath);
-
+            // Use new FFmpeg VS Filter pipeline (single process, no named pipes)
+            _logger.LogInformation("Starting 4kx2 VS Filter pipeline for {MediaPath}", state.MediaPath);
+            var pipeline = new VsFilterPipeline(
+                encodingOptions.TranscodingTempPath,
+                _serverConfigurationManager.ApplicationPaths.LogDirectoryPath);
+            var videoStream = state.VideoStream!;
+            var audioStream = state.AudioStream;
+            var videoCodec = state.ActualOutputVideoCodec ?? state.OutputVideoCodec ?? "h264";
+            var audioCodec = state.ActualOutputAudioCodec ?? state.OutputAudioCodec ?? "aac";
+            var segmentLength = state.SegmentLength > 0 ? state.SegmentLength : 30;
+            var segmentContainer = state.Request.SegmentContainer ?? "ts";
+            var audioStreamIndex = audioStream is not null ? audioStream.Index : 0;
+            pipeline.Start(
+                sourcePath: state.MediaPath,
+                outputPath: outputPath,
+                encoderPath: _mediaEncoder.EncoderPath,
+                encodingOptions: encodingOptions,
+                videoStreamIndex: videoStream.Index,
+                audioStreamIndex: audioStreamIndex,
+                segmentLength: segmentLength,
+                segmentContainer: segmentContainer,
+                videoCodec: videoCodec,
+                audioCodec: audioCodec,
+                videoBitrate: state.OutputVideoBitrate,
+                audioBitrate: state.OutputAudioBitrate,
+                width: videoStream.Width ?? 1920,
+                height: videoStream.Height ?? 1080,
+                pixelFormat: encodingOptions.VsPixelFormat,
+                inputFramerate: videoStream.ReferenceFrameRate,
+                hardwareAccelerationType: encodingOptions.HardwareAccelerationType == HardwareAccelerationType.none ? null : encodingOptions.HardwareAccelerationType.ToString(),
+                hwDevice: encodingOptions.VaapiDevice);
+            var vsfilterProcess = pipeline.FfmpegProcess!;
+            var vsfilterTranscodingJob = OnTranscodeBeginning(
+                outputPath,
+                state.Request.PlaySessionId,
+                state.MediaSource.LiveStreamId,
+                Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture),
+                transcodingJobType,
+                vsfilterProcess,
+                state.Request.DeviceId,
+                state,
+                cancellationTokenSource);
+            _logger.LogInformation("4kx2 VS Filter pipeline started");
+            var vsfilterLogPrefix = "FFmpeg.VSFilter-";
+            var vsfilterLogFilePath = Path.Combine(
+                _serverConfigurationManager.ApplicationPaths.LogDirectoryPath,
+                $"{vsfilterLogPrefix}{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{state.Request.MediaSourceId}_{Guid.NewGuid().ToString()[..8]}.log");
+            Stream vsfilterLogStream = new FileStream(
+                vsfilterLogFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.Read,
+                IODefaults.FileStreamBufferSize,
+                FileOptions.Asynchronous);
+            await JsonSerializer.SerializeAsync(vsfilterLogStream, state.MediaSource, cancellationToken: cancellationTokenSource.Token).ConfigureAwait(false);
+            var vsfilterCommandLineLogMessageBytes = Encoding.UTF8.GetBytes(
+                Environment.NewLine
+                + Environment.NewLine
+                + vsfilterProcess.StartInfo.FileName + " " + vsfilterProcess.StartInfo.Arguments
+                + Environment.NewLine
+                + Environment.NewLine);
+            await vsfilterLogStream.WriteAsync(vsfilterCommandLineLogMessageBytes, cancellationTokenSource.Token).ConfigureAwait(false);
+            vsfilterProcess.Exited += (_, _) => OnFfMpegProcessExited(vsfilterProcess, vsfilterTranscodingJob, state);
+            vsfilterProcess.BeginErrorReadLine();
+            await vsfilterLogStream.DisposeAsync().ConfigureAwait(false);
+            return vsfilterTranscodingJob;
+        }
+        else if (is4kx2Mode)
+        {
+            // Use old vspipe pipeline (fallback)
+            _logger.LogInformation("Starting 4kx2 vspipe pipeline (legacy) for {MediaPath}", state.MediaPath);
             var pipeline = new VspipePipeline(
                 encodingOptions.TranscodingTempPath,
                 _serverConfigurationManager.ApplicationPaths.LogDirectoryPath);
