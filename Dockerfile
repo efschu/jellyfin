@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 RUN git clone --depth 1 --branch 1.4.3 https://github.com/videolan/dav1d.git
 WORKDIR /build/dav1d
-RUN meson setup build --prefix=/usr/local --buildtype=release && \
+RUN meson setup build --prefix=/usr/local --libdir=lib --buildtype=release && \
     ninja -C build && ninja -C build install && ldconfig
 
 # Build libvpl >= 2.6 from source (ubuntu has 2.5.x, latest is v2023.4.0)
