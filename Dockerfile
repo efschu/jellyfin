@@ -21,7 +21,7 @@ RUN mkdir -p /build
 
 # Build zimg from source (ubuntu has 3.0.3, need >= 3.0.5)
 WORKDIR /build
-RUN git clone --depth 1 --branch zimg-3.0.5 https://github.com/sekrit-twc/zimg.git
+RUN git clone --depth 1 --branch v3.0 https://github.com/sekrit-twc/zimg.git
 WORKDIR /build/zimg
 RUN ./autogen.sh && \
     ./configure --disable-static PREFIX=/usr/local && \
