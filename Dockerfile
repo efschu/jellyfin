@@ -39,13 +39,20 @@ RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
-# Install video codec dependencies
+    # Build dav1d from source (ubuntu has 0.9.x, need >= 1.0.0)
 RUN apt-get update && apt-get install -y \
     libx264-dev libx265-dev libnuma-dev libvpx-dev \
     libmp3lame-dev libopus-dev \
     libass-dev libfreetype6-dev libfribidi-dev libharfbuzz-dev \
-    libsdl2-dev libvpl-dev libdav1d-dev libaom-dev \
+    libsdl2-dev libvpl-dev libaom-dev nasm meson \
     && rm -rf /var/lib/apt/lists/*
+
+# Build dav1d >= 1.0.0 from source
+WORKDIR /build
+RUN git clone --depth 1 --branch 1.4.3 https://github.com/videolan/dav1d.git
+WORKDIR /build/dav1d
+RUN meson setup build --prefix=/usr/local --buildtype=release && \
+    ninja -C build && ninja -C build install && ldconfig
 
 # Clone and build FFmpeg with VapourSynth support
 WORKDIR /build
