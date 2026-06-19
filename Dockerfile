@@ -64,7 +64,7 @@ RUN ./configure \
     --enable-libmp3lame --enable-libopus --enable-libass \
     --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
     --enable-libvpl --enable-libdav1d --enable-libaom \
-    --enable-vapoursynth --enable-postproc \
+    --enable-vapoursynth \
     --extra-cflags="-I/usr/local/include" \
     --extra-ldflags="-L/usr/local/lib" \
     && make -j4 \
