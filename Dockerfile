@@ -114,6 +114,22 @@ COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 # Copy all FFmpeg/VapourSynth libraries from ffmpeg-builder
 COPY --from=ffmpeg-builder /usr/local/lib/ /usr/local/lib/
+# Copy system libraries that FFmpeg was linked against (from apt packages)
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx264.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx265.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libmp3lame.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libopus.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpx.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libass.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libfreetype.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libfribidi.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libharfbuzz.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libfontconfig.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libpng16.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libxml2.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libtheora.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvorbis.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libogg.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # First run ldconfig to set up the cache, then create explicit .so symlinks
