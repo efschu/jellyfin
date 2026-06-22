@@ -85,8 +85,10 @@ RUN ./configure \
     && make -j4 \
     && make install \
     && ldconfig
-    # Verify FFmpeg is installed
-    RUN /usr/local/bin/ffmpeg -version | head -1 && echo "FFmpeg installed successfully"
+
+# Verify FFmpeg is installed
+RUN /usr/local/bin/ffmpeg -version | head -1 && echo "FFmpeg installed successfully"
+
 # ============================================================
 # Stage 2: Jellyfin Runtime
 # ============================================================
@@ -104,17 +106,14 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libass9 libfreetype6 libfribidi0 \
     libfontconfig1 \
-    
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
-# Copy all libraries from ffmpeg-builder
-COPY --from=ffmpeg-builder /usr/local/lib/lib*.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libvapoursynth.so* /usr/local/lib/
-COPY --from=ffmpeg-builder /usr/local/lib/libvsscript.so* /usr/local/lib/
+# Copy all FFmpeg/VapourSynth libraries from ffmpeg-builder
+COPY --from=ffmpeg-builder /usr/local/lib/ /usr/local/lib/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # First run ldconfig to set up the cache, then create explicit .so symlinks
@@ -130,7 +129,6 @@ ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Create directories for VapourSynth scripts and models
-
 RUN mkdir -p /config/vapoursynth \
     && mkdir -p /config/vapoursynth/models \
     && mkdir -p /cache/transcodes \
