@@ -109,8 +109,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install VapourSynth Python bindings
-RUN pip3 install --break-system-packages numpy vapoursynth
+# Install VapourSynth Python bindings (requires build tools)
+RUN pip3 install --break-system-packages --no-build-isolation cython numpy && \
+    pip3 install --break-system-packages vapoursynth
 
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
