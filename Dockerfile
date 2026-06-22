@@ -110,6 +110,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Install VapourSynth Python bindings (requires build tools)
+# Set LIBRARY_PATH so gcc can find libvapoursynth.so during the build
+ENV LIBRARY_PATH=/usr/local/lib
 RUN pip3 install --break-system-packages --no-build-isolation cython numpy && \
     pip3 install --break-system-packages vapoursynth
 
