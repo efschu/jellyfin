@@ -109,13 +109,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install VapourSynth Python bindings (requires build tools)
-# Set LDFLAGS so gcc can find libvapoursynth.so during the build
-ENV LDFLAGS="-L/usr/local/lib"
-ENV LIBRARY_PATH=/usr/local/lib
-ENV CPATH=/usr/local/include
-RUN pip3 install --break-system-packages --no-build-isolation cython numpy && \
-    LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
+# Install Cython and NumPy (needed for VapourSynth pip build)
+RUN pip3 install --break-system-packages --no-build-isolation cython numpy
 
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
@@ -153,6 +148,12 @@ RUN ldconfig \
     && for lib in /usr/local/lib/lib*.so.*; do \
          [ -L "${lib%.*}" ] || ln -sf "$(basename $lib)" "${lib%.*}"; \
        done
+
+# Install VapourSynth Python bindings (now that libvapoursynth.so is available)
+ENV LDFLAGS="-L/usr/local/lib"
+ENV LIBRARY_PATH=/usr/local/lib
+ENV CPATH=/usr/local/include
+RUN LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
 
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
