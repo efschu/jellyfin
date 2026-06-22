@@ -110,10 +110,12 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Install VapourSynth Python bindings (requires build tools)
-# Set LIBRARY_PATH so gcc can find libvapoursynth.so during the build
+# Set LDFLAGS so gcc can find libvapoursynth.so during the build
+ENV LDFLAGS="-L/usr/local/lib"
 ENV LIBRARY_PATH=/usr/local/lib
+ENV CPATH=/usr/local/include
 RUN pip3 install --break-system-packages --no-build-isolation cython numpy && \
-    pip3 install --break-system-packages vapoursynth
+    LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
 
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
