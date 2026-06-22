@@ -132,12 +132,18 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvorbis.so* /usr/lib/x86_
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libogg.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
-# First run ldconfig to set up the cache, then create explicit .so symlinks
+# Create proper symlinks for shared libraries
 RUN ldconfig \
+    && for lib in /usr/local/lib/lib*.so.*.*.*; do \
+         target="${lib%.*}"; \
+         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+         target="${target%.*}"; \
+         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+         target="${target%.*}"; \
+         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+       done \
     && for lib in /usr/local/lib/lib*.so.*; do \
-         if [ -f "$lib" ] && [ ! -L "$lib" ]; then \
-           ln -sf "$(basename $lib)" "${lib%.*}" 2>/dev/null || true; \
-         fi \
+         [ -L "${lib%.*}" ] || ln -sf "$(basename $lib)" "${lib%.*}"; \
        done
 
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
