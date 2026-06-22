@@ -97,7 +97,7 @@ FROM jellyfin/jellyfin:10.9
 USER root
 
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip python3-dev \
+    python3 python3-pip python3-dev python3-venv \
     libdrm2 libva2 libva-drm2 libasound2 libxv1 libvpl2 \
     libxcb1 libxcb-shm0 libxcb-xfixes0 \
     libx11-6 libxext6 \
@@ -108,6 +108,9 @@ RUN apt-get update && apt-get install -y \
     libfontconfig1 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install VapourSynth Python bindings
+RUN pip3 install --break-system-packages numpy vapoursynth
 
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
