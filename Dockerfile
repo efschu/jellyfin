@@ -101,8 +101,8 @@ RUN ./configure \
     --enable-libx264 --enable-libx265 --enable-libvpx \
     --enable-libmp3lame --enable-libopus --enable-libass \
     --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
-    --enable-libdav1d --enable-libaom \\
-    --enable-vapoursynth \\
+    --enable-libdav1d --enable-libaom \
+    --enable-vapoursynth \
     --extra-cflags="-I/usr/local/include" \
     --extra-ldflags="-L/usr/local/lib" \
     && make -j4 \
