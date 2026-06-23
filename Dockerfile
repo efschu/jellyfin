@@ -134,8 +134,10 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libtheora.so* /usr/lib/x86_
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvorbis.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libogg.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
-# Copy libpython3.10 that VapourSynth was built against
+# Copy libpython3.10 and Python 3.10 stdlib that VapourSynth was built against
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libpython3.10* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/python3.10/ /usr/lib/python3.10/
+COPY --from=ffmpeg-builder /usr/lib/python3.10.zip /usr/lib/python3.10.zip 2>/dev/null || true
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # Create proper symlinks for shared libraries
 RUN ldconfig \
