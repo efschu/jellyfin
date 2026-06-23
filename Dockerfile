@@ -25,12 +25,13 @@ RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev python3-venv \
     python3-numpy cython3 \
     && rm -rf /var/lib/apt/lists/*
-
+# Remove apt-installed cython3 (conflicts with pip-installed cython)
+RUN apt-get remove -y cython3 || true
 # Set up Python 3.10 venv for VapourSynth build
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir numpy "cython==0.29.37"
+ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip
+RUN /opt/venv/bin/pip install --no-cache-dir numpy "cython==0.29.37"
 
 # Create build directory
 RUN mkdir -p /build
