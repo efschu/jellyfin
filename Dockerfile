@@ -158,20 +158,17 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libdav1d.so* /usr/lib/x86_6
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpl.so* /usr/lib/x86_64-linux-gnu/
 
 # Build VapourSynth from source against system Python 3.11
-# This ensures the C extension matches the runtime Python version
+# R73 uses autotools, not meson
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir cython numpy meson-python && \
+    /opt/venv/bin/pip install --no-cache-dir "cython<3.0" && \
     git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git /tmp/vs && \
     cd /tmp/vs && \
-    cp -r /usr/local/include/vapoursynth/include/. src/cython/ 2>/dev/null || true && \
-    sed -i "s/^\(cython_args.*=\).*/\\1[--3plus]/" Makefile.meson 2>/dev/null || true && \
-    meson setup build --prefix=/usr/local \
-        -Dauto_features=disabled \
-        -Dpython=enabled \
-        -Dpython.platlibdir=lib/python3/dist-packages && \
-    cd build && \
-    ninja && \
-    ninja install && \
+    apt-get install -y --no-install-recommends autoconf automake libtool pkg-config && \
+    /opt/venv/bin/pip install "cython<3.0" && \
+    ./autogen.sh && \
+    ./configure PREFIX=/usr/local && \
+    make -j4 && \
+    make install && \
     ldconfig && \
     rm -rf /tmp/vs
 
