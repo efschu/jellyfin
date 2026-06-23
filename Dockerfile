@@ -31,7 +31,8 @@ RUN apt-get remove -y cython3 || true
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip
-RUN /opt/venv/bin/pip install --no-cache-dir numpy "cython==0.29.37"
+# Use Cython 3.x for better Python 3.10+ syntax support
+RUN /opt/venv/bin/pip install --no-cache-dir numpy cython
 
 # Create build directory
 RUN mkdir -p /build
@@ -48,6 +49,10 @@ RUN ./autogen.sh && \
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
+# Patch VapourSynth pyx to fix noexcept nogil syntax for Cython 3.x
+# Cython 3.x has issue with "noexcept nogil" - replace with separate decorators
+RUN sed -i 's/cdef void __stdcall _logCb(int msgType, const char \*msg, void \*userData) noexcept nogil:/cdef void __stdcall _logCb(int msgType, const char *msg, void *userData) noexcept:/' src/cython/vapoursynth.pyx && \
+    sed -i 's/cdef void __stdcall _logCb(int msgType, const char \*msg, void \*userData) noexcept:/cdef void __stdcall _logCb(int msgType, const char *msg, void *userData) noexcept nogil:/' src/cython/vapoursynth.pyx || true
 RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
