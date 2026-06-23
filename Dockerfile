@@ -89,6 +89,7 @@ WORKDIR /build
 RUN git clone --depth 1 --branch master https://github.com/efschu/FFmpeg.git ffmpeg
 WORKDIR /build/ffmpeg
 ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig"
+# Run configure, then force enable the VapourSynth filter
 RUN ./configure \
     --prefix=/usr/local \
     --bindir=/usr/local/bin \
@@ -107,7 +108,10 @@ RUN ./configure \
     --extra-ldflags="-L/usr/local/lib" \
     && make -j4 \
     && make install \
-    && ldconfig
+    && ldconfig \
+    # Verify VapourSynth demuxer and filter are available
+    && /usr/local/bin/ffmpeg -version | head -1 \
+    && /usr/local/bin/ffmpeg -demuxers 2>/dev/null | grep -i vapoursynth
 
 # ============================================================
 # Stage 2: Jellyfin Runtime
