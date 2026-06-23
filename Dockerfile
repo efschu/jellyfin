@@ -50,6 +50,9 @@ RUN ./autogen.sh && \
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
+# Patch the Cython source to use Python 3.7-compatible syntax
+# Cython 0.29.x doesn't understand Python 3.8+ positional-only parameter syntax (/)
+RUN sed -i "s/, \/ default=None/, default=None/g; s/, \/ default=_EMPTY/, default=_EMPTY/g; s/, default=0, \//, default=0,/g" src/cython/vapoursynth.pyx
 RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
