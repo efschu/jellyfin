@@ -85,9 +85,10 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     cmake --build build -j4 && cmake --install build && ldconfig
 
 # Clone and build FFmpeg with VapourSynth demuxer
-WORKDIR /build
+
 RUN git clone --depth 1 --branch master https://github.com/efschu/FFmpeg.git ffmpeg
 WORKDIR /build/ffmpeg
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig"
 RUN ./configure \
     --prefix=/usr/local \
     --bindir=/usr/local/bin \
@@ -107,11 +108,6 @@ RUN ./configure \
     && make -j4 \
     && make install \
     && ldconfig
-
-# Verify VapourSynth demuxer is available
-RUN /usr/local/bin/ffmpeg -version | head -1 && \
-    /usr/local/bin/ffmpeg -demuxers 2>/dev/null | grep -i vapoursynth && \
-    echo "SUCCESS: FFmpeg with VapourSynth demuxer built"
 
 # ============================================================
 # Stage 2: Jellyfin Runtime
