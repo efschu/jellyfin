@@ -161,6 +161,8 @@ RUN LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV LD_LIBRARY_PATH=/usr/local/lib
+ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages
+ENV PYTHONHOME=/usr/lib/python3.10
 
 # Create directories for VapourSynth scripts and models
 RUN mkdir -p /config/vapoursynth \
