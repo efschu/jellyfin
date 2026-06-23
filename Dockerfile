@@ -115,8 +115,10 @@ RUN pip3 install --break-system-packages --no-build-isolation cython numpy
 # Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
-# Copy all FFmpeg/VapourSynth libraries from ffmpeg-builder
+# Copy FFmpeg libraries (but NOT VapourSynth - will be rebuilt for Python 3.11)
 COPY --from=ffmpeg-builder /usr/local/lib/ /usr/local/lib/
+# Remove Python 3.10-built VapourSynth libs (will be rebuilt for Python 3.11)
+RUN rm -f /usr/local/lib/libvapoursynth*.so* /usr/local/lib/libvapoursynth*.a /usr/local/lib/libvapoursynth*.la
 # Copy system libraries that FFmpeg was linked against (from apt packages)
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx264.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx265.so* /usr/lib/x86_64-linux-gnu/
