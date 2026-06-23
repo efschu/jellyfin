@@ -53,9 +53,9 @@ WORKDIR /build/vapoursynth
 # Patch the Cython source to use Python 3.7-compatible syntax
 # Cython 0.29.x doesn't understand Python 3.8+ positional-only parameter syntax (/)
 # Use | as sed delimiter to avoid issues with /
-RUN sed -i 's|, / default=None|, default=None|g' src/cython/vapoursynth.pyx && \
-    sed -i 's|, / default=_EMPTY|, default=_EMPTY|g' src/cython/vapoursynth.pyx && \
-    sed -i 's|, default=0, /)|, default=0)|g' src/cython/vapoursynth.pyx
+RUN sed -i 's|key, /, default=None|key, default=None|g' src/cython/vapoursynth.pyx && \
+    sed -i 's|key, /, default=_EMPTY|key, default=_EMPTY|g' src/cython/vapoursynth.pyx && \
+    sed -i 's|key, default=0, /)|key, default=0)|g' src/cython/vapoursynth.pyx
 RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
