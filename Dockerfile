@@ -31,7 +31,7 @@ RUN apt-get remove -y cython3 || true
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip
-RUN /opt/venv/bin/pip install --no-cache-dir numpy "cython==0.29.36"
+RUN /opt/venv/bin/pip install --no-cache-dir numpy "cython==0.29.37"
 
 # Create build directory
 RUN mkdir -p /build
