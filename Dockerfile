@@ -85,7 +85,7 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     cmake --build build -j4 && cmake --install build && ldconfig
 
 # Clone and build FFmpeg with VapourSynth demuxer
-
+WORKDIR /build
 RUN git clone --depth 1 --branch master https://github.com/efschu/FFmpeg.git ffmpeg
 WORKDIR /build/ffmpeg
 ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig"
