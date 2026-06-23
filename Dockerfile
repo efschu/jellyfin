@@ -162,7 +162,7 @@ ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages
-ENV PYTHONHOME=/usr/lib/python3.10
+ENV PYTHONHOME=/usr/lib/python3.10/lib
 
 # Create directories for VapourSynth scripts and models
 RUN mkdir -p /config/vapoursynth \
