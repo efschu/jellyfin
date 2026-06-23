@@ -162,7 +162,13 @@ ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages
+# Create symlinks to match Debian Python 3.10 layout (lib/lib/python3.10/)
+RUN mkdir -p /usr/lib/python3.10/lib && \
+    cd /usr/lib/python3.10/lib && \
+    ln -sf ../python3.10 python3.10 && \
+    ln -sf ../python3.10.zip python310.zip 2>/dev/null || true
 ENV PYTHONHOME=/usr/lib/python3.10/lib
+ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10
 
 # Create directories for VapourSynth scripts and models
 RUN mkdir -p /config/vapoursynth \
