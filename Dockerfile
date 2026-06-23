@@ -1,28 +1,41 @@
 # ============================================================
-# Jellyfin with FFmpeg VapourSynth Filter Support
+# Jellyfin with FFmpeg VapourSynth Demuxer Support
+# ============================================================
+# Builds FFmpeg with VapourSynth demuxer support.
+# VapourSynth is built from source against Python 3.10 in the builder
+# stage, then the entire Python 3.10 runtime is copied to the final
+# stage to avoid version mismatches.
+# ============================================================
+
+# ============================================================
+# Stage 1: Build FFmpeg + VapourSynth (Python 3.10)
 # ============================================================
 FROM ubuntu:22.04 AS ffmpeg-builder
 
 # Limit build threads to 4 for stability
 ENV MAKEFLAGS="-j4"
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PREFIX=/usr/local
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential cmake pkg-config nasm yasm libtool autoconf automake \
     libc6-dev wget git \
     libssl-dev \
-    python3 python3-pip python3-dev \
-    python3-numpy \
+    python3 python3-pip python3-dev python3-venv \
+    python3-numpy cython3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install specific Cython version compatible with VapourSynth R73
-RUN pip3 install --upgrade pip && pip3 install cython
+# Set up Python 3.10 venv for VapourSynth build
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir numpy cython
 
 # Create build directory
 RUN mkdir -p /build
 
-# Build zimg from source (ubuntu has 3.0.3, need >= 3.0.5)
+# Build zimg >= 3.0.5 from source
 WORKDIR /build
 RUN git clone --depth 1 --branch v3.0 https://github.com/sekrit-twc/zimg.git
 WORKDIR /build/zimg
@@ -30,7 +43,7 @@ RUN ./autogen.sh && \
     ./configure --disable-static PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
-# Build VapourSynth from source using autotools
+# Build VapourSynth R73 from source against Python 3.10
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
@@ -46,21 +59,21 @@ RUN apt-get update && apt-get install -y \
     libsdl2-dev libaom-dev nasm meson git cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Build dav1d >= 1.0.0 from source (ubuntu has 0.9.x)
+# Build dav1d >= 1.0.0 from source
 WORKDIR /build
 RUN git clone --depth 1 --branch 1.4.3 https://github.com/videolan/dav1d.git
 WORKDIR /build/dav1d
 RUN meson setup build --prefix=/usr/local --libdir=lib --buildtype=release && \
     ninja -C build && ninja -C build install && ldconfig
 
-# Build libvpl >= 2.6 from source (ubuntu has 2.5.x, latest is v2023.4.0)
+# Build libvpl >= 2.6 from source
 WORKDIR /build
 RUN git clone --depth 1 --branch v2023.4.0 https://github.com/intel/libvpl.git
 WORKDIR /build/libvpl
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF && \
-    cmake --build build && cmake --install build && ldconfig
+    cmake --build build -j4 && cmake --install build && ldconfig
 
 # Clone and build FFmpeg with VapourSynth support
 WORKDIR /build
@@ -86,7 +99,7 @@ RUN ./configure \
     && make install \
     && ldconfig
 
-# Verify FFmpeg is installed
+# Verify VapourSynth is available
 RUN /usr/local/bin/ffmpeg -version | head -1 && echo "FFmpeg installed successfully"
 
 # ============================================================
@@ -96,8 +109,9 @@ FROM jellyfin/jellyfin:10.9
 
 USER root
 
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip python3-dev python3-venv \
+    python3 python3-pip python3-dev \
     libdrm2 libva2 libva-drm2 libasound2 libxv1 libvpl2 \
     libxcb1 libxcb-shm0 libxcb-xfixes0 \
     libx11-6 libxext6 \
@@ -109,17 +123,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install Cython and NumPy (needed for VapourSynth pip build)
-RUN pip3 install --break-system-packages --no-build-isolation cython numpy
-
-# Copy FFmpeg with VapourSynth support
+# Copy FFmpeg with VapourSynth support from builder
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
-# Copy FFmpeg libraries (but NOT VapourSynth - will be rebuilt for Python 3.11)
+
+# Copy all FFmpeg/VapourSynth libraries from builder
 COPY --from=ffmpeg-builder /usr/local/lib/ /usr/local/lib/
-# Remove Python 3.10-built VapourSynth libs (will be rebuilt for Python 3.11)
-RUN rm -f /usr/local/lib/libvapoursynth*.so* /usr/local/lib/libvapoursynth*.a /usr/local/lib/libvapoursynth*.la
-# Copy system libraries that FFmpeg was linked against (from apt packages)
+
+# Copy system libraries that FFmpeg depends on
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx264.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libx265.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libmp3lame.so* /usr/lib/x86_64-linux-gnu/
@@ -136,35 +147,41 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libtheora.so* /usr/lib/x86_
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvorbis.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libogg.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
-# Python 3.10 libs are NOT needed - we'll build VapourSynth against Python 3.11 in the next step
-# (libvapoursynth.so from builder is Python 3.10, will be replaced)
-COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
-# Create proper symlinks for shared libraries
-RUN ldconfig \
-    && for lib in /usr/local/lib/lib*.so.*.*.*; do \
-         target="${lib%.*}"; \
-         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
-         target="${target%.*}"; \
-         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
-         target="${target%.*}"; \
-         [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
-       done \
-    && for lib in /usr/local/lib/lib*.so.*; do \
-         [ -L "${lib%.*}" ] || ln -sf "$(basename $lib)" "${lib%.*}"; \
-       done
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libdav1d.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpl.so* /usr/lib/x86_64-linux-gnu/
 
-# Install VapourSynth Python bindings (now that libvapoursynth.so is available)
-ENV LDFLAGS="-L/usr/local/lib"
-ENV LIBRARY_PATH=/usr/local/lib
-ENV CPATH=/usr/local/include
-RUN LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
+# Copy Python 3.10 runtime (the version VapourSynth was built against)
+COPY --from=ffmpeg-builder /usr/bin/python3.10 /usr/bin/python3.10
+COPY --from=ffmpeg-builder /usr/lib/python3.10/ /usr/lib/python3.10/
+COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libpython3.10.so* /usr/lib/x86_64-linux-gnu/
 
+# Copy VapourSynth Python module
+COPY --from=ffmpeg-builder /usr/local/lib/python3.10/ /usr/local/lib/python3.10/
+
+# Copy headers
+COPY --from=ffmpeg-builder /usr/local/include/ /usr/local/include/
+
+# Create proper symlinks for shared libraries (handle .so.X.Y.Z pattern)
+RUN ldconfig && \
+    for lib in /usr/local/lib/lib*.so.*.*.*; do \
+        target="${lib%.*}"; \
+        [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+        target="${target%.*}"; \
+        [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+        target="${target%.*}"; \
+        [ -e "$target" ] || ln -sf "$(basename $lib)" "$target"; \
+    done && \
+    for lib in /usr/local/lib/lib*.so.*; do \
+        [ -L "${lib%.*}" ] || ln -sf "$(basename $lib)" "${lib%.*}"; \
+    done && \
+    ldconfig
+
+# Environment variables for VapourSynth and FFmpeg
+ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/lib/x86_64-linux-gnu"
+ENV PYTHONHOME="/usr/lib/python3.10"
+ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages:/usr/lib/python3.10/dist-packages"
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
-ENV LD_LIBRARY_PATH=/usr/local/lib
-# Build VapourSynth against the runtime Python (3.11)
-# This ensures libvapoursynth.so uses libpython3.11 which is available
-ENV PYTHONPATH=/usr/local/lib/python3.11/site-packages
 
 # Create directories for VapourSynth scripts and models
 RUN mkdir -p /config/vapoursynth \
