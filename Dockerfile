@@ -1,14 +1,17 @@
 # ============================================================
 # Jellyfin with FFmpeg VapourSynth Demuxer Support
 # ============================================================
-# Builds FFmpeg with VapourSynth demuxer support.
-# VapourSynth is built from source against Python 3.10 in the builder
-# stage, then the entire Python 3.10 runtime is copied to the final
-# stage to avoid version mismatches.
+# Builds FFmpeg with VapourSynth demuxer support, then assembles
+# a Jellyfin runtime with everything needed for the VS Filter
+# pipeline (4kx2 quality with AI upscaling + frame interpolation).
+#
+# Uses VapourSynth demuxer (-f vapoursynth -i script.vpy) approach
+# since the VS filter (-vf vapoursynth=) requires extensive FFmpeg
+# fork changes.
 # ============================================================
 
 # ============================================================
-# Stage 1: Build FFmpeg + VapourSynth (Python 3.10)
+# Stage 1: Build FFmpeg + VapourSynth
 # ============================================================
 FROM ubuntu:22.04 AS ffmpeg-builder
 
@@ -17,22 +20,20 @@ ENV MAKEFLAGS="-j4"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PREFIX=/usr/local
 
-# Install build dependencies
+# Install build dependencies including Python 3.10 and VapourSynth deps
 RUN apt-get update && apt-get install -y \
     build-essential cmake pkg-config nasm yasm libtool autoconf automake \
     libc6-dev wget git \
     libssl-dev \
-    python3 python3-pip python3-dev python3-venv \
-    python3-numpy cython3 \
+    python3.10 python3.10-dev python3.10-venv \
+    python3 python3-pip python3-dev \
     && rm -rf /var/lib/apt/lists/*
-# Remove apt-installed cython3 (conflicts with pip-installed cython)
-RUN apt-get remove -y cython3 || true
-# Set up Python 3.10 venv for VapourSynth build
-RUN python3 -m venv /opt/venv
+
+# Set up Python 3.10 venv (this is what VapourSynth will be built against)
+RUN python3.10 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip
-# Use Cython 3.x for better Python 3.10+ syntax support
-RUN /opt/venv/bin/pip install --no-cache-dir numpy cython
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir numpy "cython<3.0"
 
 # Create build directory
 RUN mkdir -p /build
@@ -45,14 +46,10 @@ RUN ./autogen.sh && \
     ./configure --disable-static PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
 
-# Build VapourSynth R73 from source against Python 3.10
+# Build VapourSynth R73 from source (Python 3.10 binding)
 WORKDIR /build
 RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git
 WORKDIR /build/vapoursynth
-# Patch VapourSynth pyx to fix noexcept nogil syntax for Cython 3.x
-# Cython 3.x has issue with "noexcept nogil" - replace with separate decorators
-RUN sed -i 's/cdef void __stdcall _logCb(int msgType, const char \*msg, void \*userData) noexcept nogil:/cdef void __stdcall _logCb(int msgType, const char *msg, void *userData) noexcept:/' src/cython/vapoursynth.pyx && \
-    sed -i 's/cdef void __stdcall _logCb(int msgType, const char \*msg, void \*userData) noexcept:/cdef void __stdcall _logCb(int msgType, const char *msg, void *userData) noexcept nogil:/' src/cython/vapoursynth.pyx || true
 RUN ./autogen.sh && \
     ./configure PREFIX=/usr/local && \
     make -j4 && make install && ldconfig
@@ -81,7 +78,7 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF && \
     cmake --build build -j4 && cmake --install build && ldconfig
 
-# Clone and build FFmpeg with VapourSynth support
+# Clone and build FFmpeg with VapourSynth demuxer
 WORKDIR /build
 RUN git clone --depth 1 --branch master https://github.com/efschu/FFmpeg.git ffmpeg
 WORKDIR /build/ffmpeg
@@ -105,8 +102,10 @@ RUN ./configure \
     && make install \
     && ldconfig
 
-# Verify VapourSynth is available
-RUN /usr/local/bin/ffmpeg -version | head -1 && echo "FFmpeg installed successfully"
+# Verify VapourSynth demuxer is available
+RUN /usr/local/bin/ffmpeg -version | head -1 && \
+    /usr/local/bin/ffmpeg -demuxers 2>/dev/null | grep -i vapoursynth && \
+    echo "SUCCESS: FFmpeg with VapourSynth demuxer built"
 
 # ============================================================
 # Stage 2: Jellyfin Runtime
@@ -115,9 +114,9 @@ FROM jellyfin/jellyfin:10.9
 
 USER root
 
-# Install runtime dependencies including build tools for VapourSynth
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip python3-dev python3-venv python3-numpy \
+    python3 python3-pip python3-dev \
     libdrm2 libva2 libva-drm2 libasound2 libxv1 libvpl2 \
     libxcb1 libxcb-shm0 libxcb-xfixes0 \
     libx11-6 libxext6 \
@@ -126,15 +125,12 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libass9 libfreetype6 libfribidi0 \
     libfontconfig1 \
-    autoconf automake libtool pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Copy FFmpeg with VapourSynth support from builder
+# Copy FFmpeg with VapourSynth support
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
-
-# Copy all FFmpeg/VapourSynth libraries from builder
 COPY --from=ffmpeg-builder /usr/local/lib/ /usr/local/lib/
 
 # Copy system libraries that FFmpeg depends on
@@ -157,22 +153,15 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libdav1d.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpl.so* /usr/lib/x86_64-linux-gnu/
 
-# Build VapourSynth from source against system Python 3.11
-# R73 uses autotools, not meson
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir "cython<3.0" && \
-    git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git /tmp/vs && \
-    cd /tmp/vs && \
-    apt-get install -y --no-install-recommends autoconf automake libtool pkg-config && \
-    /opt/venv/bin/pip install "cython<3.0" && \
-    ./autogen.sh && \
-    ./configure PREFIX=/usr/local && \
-    make -j4 && \
-    make install && \
-    ldconfig && \
-    rm -rf /tmp/vs
+# Copy Python 3.10 with VapourSynth module
+# VapourSynth was built against Python 3.10, so we need the Python 3.10 runtime
+COPY --from=ffmpeg-builder /usr/bin/python3.10 /usr/bin/python3.10
+COPY --from=ffmpeg-builder /opt/venv/lib/python3.10/site-packages/ /opt/venv/lib/python3.10/site-packages/
 
-# Create proper symlinks for shared libraries (handle .so.X.Y.Z pattern)
+# Copy VapourSynth C headers
+COPY --from=ffmpeg-builder /usr/local/include/vapoursynth/ /usr/local/include/vapoursynth/
+
+# Create proper symlinks for shared libraries
 RUN ldconfig && \
     for lib in /usr/local/lib/lib*.so.*.*.*; do \
         target="${lib%.*}"; \
@@ -187,12 +176,14 @@ RUN ldconfig && \
     done && \
     ldconfig
 
-# Environment variables for VapourSynth and FFmpeg
+# Environment variables
 ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/lib/x86_64-linux-gnu"
+ENV PYTHONHOME="/opt/venv"
+ENV PYTHONPATH="/opt/venv/lib/python3.10/site-packages:/opt/venv/lib/python3.10"
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 
-# Create directories for VapourSynth scripts and models
+# Create directories for VapourSynth scripts
 RUN mkdir -p /config/vapoursynth \
     && mkdir -p /config/vapoursynth/models \
     && mkdir -p /cache/transcodes \

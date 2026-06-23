@@ -4,20 +4,27 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 using MediaBrowser.Model.Configuration;
 
 namespace MediaBrowser.MediaEncoding.Transcoding;
 
 /// <summary>
-/// Manages the FFmpeg VapourSynth filter pipeline using the built-in VS filter.
-/// This replaces standard transcoding with AI-powered upscaling and frame interpolation.
+/// Pipeline that uses FFmpeg's VapourSynth DEMUXER (-f vapoursynth -i script.vpy).
+/// This is the working approach for efschu/FFmpeg fork - the VS filter (-vf vapoursynth=)
+/// is not yet available, but the demuxer is fully functional.
+/// 
+/// The VapourSynth script (.vpy) is generated dynamically and contains the
+/// complete processing chain (upscale + interpolation + output).
 /// </summary>
 public sealed class VsFilterPipeline : IDisposable
 {
     private readonly string _transcodeTempPath;
     private readonly string _logDirectory;
+    private readonly List<string> _tempFiles = new List<string>();
     private Process? _ffmpegProcess;
-    private readonly List<string> _tempFiles = new();
+    private int _state;
+    private string? _scriptPath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VsFilterPipeline"/> class.
@@ -44,7 +51,7 @@ public sealed class VsFilterPipeline : IDisposable
 
     private void StopProcess()
     {
-        if (_ffmpegProcess is not null && !_ffmpegProcess.HasExited)
+        if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
         {
             try
             {
@@ -53,7 +60,7 @@ public sealed class VsFilterPipeline : IDisposable
             }
             catch
             {
-                // Ignore errors during cleanup
+                // Ignore
             }
             finally
             {
@@ -76,21 +83,19 @@ public sealed class VsFilterPipeline : IDisposable
             }
             catch
             {
-                // Ignore cleanup errors
+                // Ignore
             }
         }
-
         _tempFiles.Clear();
     }
 
     /// <summary>
-    /// Starts the VS Filter pipeline.
+    /// Starts the VapourSynth demuxer pipeline.
     /// </summary>
     /// <param name="sourcePath">Source media path.</param>
     /// <param name="outputPath">Output HLS playlist path.</param>
     /// <param name="encoderPath">FFmpeg encoder path.</param>
     /// <param name="encodingOptions">Encoding options.</param>
-    /// <param name="commandLineArguments">Base FFmpeg command line arguments.</param>
     /// <param name="videoStreamIndex">Video stream index.</param>
     /// <param name="audioStreamIndex">Audio stream index.</param>
     /// <param name="videoCodec">Output video codec.</param>
@@ -106,7 +111,6 @@ public sealed class VsFilterPipeline : IDisposable
         string outputPath,
         string encoderPath,
         EncodingOptions encodingOptions,
-        string commandLineArguments,
         int videoStreamIndex,
         int audioStreamIndex,
         string videoCodec,
@@ -118,15 +122,16 @@ public sealed class VsFilterPipeline : IDisposable
         string? hardwareAccelerationType,
         string? hwDevice)
     {
-        // Generate VapourSynth script based on preset
-        var scriptPath = GenerateVsScript(encodingOptions);
+        // Generate VapourSynth script - it must read the source file and apply processing
+        _scriptPath = GenerateVsScript(sourcePath, encodingOptions, videoStreamIndex);
 
-        // Build the FFmpeg command with VS filter
+        // Build FFmpeg command using the VapourSynth demuxer
         var args = BuildFfmpegArgs(
-            sourcePath,
+            _scriptPath,
             outputPath,
+            sourcePath,
             encodingOptions,
-            scriptPath,
+            audioStreamIndex,
             videoCodec,
             audioCodec,
             videoBitrate,
@@ -137,15 +142,16 @@ public sealed class VsFilterPipeline : IDisposable
             hwDevice);
 
         // Create log file
-        var logPrefix = "FFmpeg.VSFilter-";
+        var logPrefix = "FFmpeg.VSDemuxer-";
         var logFilePath = Path.Combine(
             _logDirectory,
-            $"{logPrefix}{DateTime.Now:yyyy-MM-dd_HH-mm-ss_{Guid.NewGuid():N}.log");
+            $"{logPrefix}{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Guid.NewGuid():N}.log");
 
         var logContent = new StringBuilder();
-        logContent.AppendLine("=== FFmpeg VapourSynth Filter Pipeline ===");
+        logContent.AppendLine("=== FFmpeg VapourSynth Demuxer Pipeline ===");
         logContent.AppendLine($"Source: {sourcePath}");
         logContent.AppendLine($"Output: {outputPath}");
+        logContent.AppendLine($"VS Script: {_scriptPath}");
         logContent.AppendLine($"Target: {encodingOptions.VsTargetWidth}x{encodingOptions.VsTargetHeight} @ {encodingOptions.VsTargetFpsNum}/{encodingOptions.VsTargetFpsDen}");
         logContent.AppendLine($"Preset: {encodingOptions.VsFilterPreset}");
         logContent.AppendLine($"Upscale model: {encodingOptions.VsUpscaleModel}");
@@ -154,7 +160,7 @@ public sealed class VsFilterPipeline : IDisposable
         logContent.AppendLine($"[FFmpeg] {encoderPath} {args}");
         logContent.AppendLine();
         logContent.AppendLine("=== VapourSynth Script ===");
-        logContent.AppendLine(File.ReadAllText(scriptPath));
+        logContent.AppendLine(File.ReadAllText(_scriptPath));
 
         File.WriteAllText(logFilePath, logContent.ToString());
 
@@ -175,101 +181,161 @@ public sealed class VsFilterPipeline : IDisposable
         _ffmpegProcess.Start();
     }
 
-    private string GenerateVsScript(EncodingOptions encodingOptions)
+    /// <summary>
+    /// Generates a VapourSynth script that loads the source, applies AI processing, and outputs.
+    /// </summary>
+    private string GenerateVsScript(string sourcePath, EncodingOptions options, int videoStreamIndex)
     {
+        var preset = options.VsFilterPreset ?? "anime-upscaled";
+
+        // Check for user-provided custom script
+        if (!string.IsNullOrWhiteSpace(options.VsFilterCustomScript) &&
+            File.Exists(options.VsFilterCustomScript))
+        {
+            // User provided a custom script - use it directly
+            // The script must handle the source itself
+            return options.VsFilterCustomScript;
+        }
+
+        // Use the system-installed VapourSynth Python module
+        // We use a special import path that works with both system Python and the bundled one
         var script = new StringBuilder();
 
-        // Use custom script if provided
-        if (!string.IsNullOrWhiteSpace(encodingOptions.VsFilterCustomScript))
-        {
-            var customPath = Path.Combine(_transcodeTempPath, $"vs-custom-{Guid.NewGuid():N}.vpy");
-            File.WriteAllText(customPath, encodingOptions.VsFilterCustomScript);
-            _tempFiles.Add(customPath);
-            return customPath;
-        }
+        script.AppendLine("# VapourSynth script generated by Jellyfin VS Filter Pipeline");
+        script.AppendLine($"# Generated at: {DateTime.UtcNow:O}");
+        script.AppendLine($"# Source: {sourcePath}");
+        script.AppendLine($"# Stream index: {videoStreamIndex}");
+        script.AppendLine();
 
         script.AppendLine("import vapoursynth as vs");
         script.AppendLine("from vapoursynth import core");
+        script.AppendLine("import sys");
+        script.AppendLine("import os");
         script.AppendLine();
 
-        // Load TensorRT plugin if needed
-        if (encodingOptions.VsUpscaleModel.Contains("trt", StringComparison.OrdinalIgnoreCase) ||
-            encodingOptions.VsInterpolationModel.Contains("trt", StringComparison.OrdinalIgnoreCase))
+        // Try to load TensorRT plugin if needed
+        if (options.VsUpscaleModel.Contains("trt", StringComparison.OrdinalIgnoreCase) ||
+            options.VsInterpolationModel.Contains("trt", StringComparison.OrdinalIgnoreCase))
         {
-            script.AppendLine("# Load TensorRT plugin for GPU acceleration");
+            script.AppendLine("# Load TensorRT plugin");
             script.AppendLine("try:");
             script.AppendLine("    core.std.LoadPlugin('/usr/lib/x86_64-linux-gnu/vapoursynth/libvstrt.so')");
-            script.AppendLine("    core.std.LoadPlugin('/usr/local/lib/vapoursynth/libvstrt.so')");
             script.AppendLine("except:");
-            script.AppendLine("    pass  # TensorRT plugin not found, will use CPU");
+            script.AppendLine("    pass");
             script.AppendLine();
         }
 
-        var preset = encodingOptions.VsFilterPreset ?? "anime-upscaled";
+        // Load input using lsmash or bestsource
+        script.AppendLine("# Load source video");
+        script.AppendLine("clip = None");
+        script.AppendLine("try:");
+        script.AppendLine("    from vapoursynth import core");
+        script.AppendLine("    # Try bestsource first (fastest)");
+        script.AppendLine("    try:");
+        script.Append("        clip = core.bs.VideoSource(");
+        script.Append($"source='{EscapePythonString(sourcePath)}', ");
+        if (videoStreamIndex >= 0) script.Append($"trackindex={videoStreamIndex}");
+        script.AppendLine(")");
+        script.AppendLine("    except Exception as e1:");
+        script.AppendLine("        print(f\"bestsource failed: {{e1}}, trying lsmash\")");
+        script.AppendLine("        try:");
+        script.Append("            clip = core.lsmas.LWLibavSource(");
+        script.Append($"source='{EscapePythonString(sourcePath)}'");
+        if (videoStreamIndex >= 0) script.Append($", stream_index={videoStreamIndex}");
+        script.AppendLine(")");
+        script.AppendLine("        except Exception as e2:");
+        script.AppendLine("            print(f\"lsmash failed: {{e2}}, trying ffms2\")");
+        script.AppendLine("            try:");
+        script.Append("                clip = core.ffms2.Source(");
+        script.Append($"source='{EscapePythonString(sourcePath)}'");
+        if (videoStreamIndex >= 0) script.Append($", track={videoStreamIndex}");
+        script.AppendLine(")");
+        script.AppendLine("            except Exception as e3:");
+        script.AppendLine("                raise RuntimeError(f\"All source loaders failed: {{e1}}, {{e2}}, {{e3}}\")");
+        script.AppendLine("except Exception as e:");
+        script.AppendLine($"    raise RuntimeError(f\"Source loading failed: {{e}}\")");
+        script.AppendLine();
 
-        // Upscaling based on preset/model
+        // Apply AI upscaling based on preset
         if (preset.Contains("upscale", StringComparison.OrdinalIgnoreCase) ||
-            encodingOptions.VsUpscaleModel.Contains("realesr", StringComparison.OrdinalIgnoreCase))
+            options.VsUpscaleModel.Contains("realesr", StringComparison.OrdinalIgnoreCase))
         {
-            script.AppendLine("# Upscaling with Real-ESRGAN");
+            script.AppendLine("# AI Upscaling with Real-ESRGAN");
             script.AppendLine("try:");
-            script.AppendLine("    from vsrealesrgan import realesrgan");
-            script.AppendLine("    clip = clip.resize.Bicubic(format=vs.RGBS, matrix_in_s='709')");
-            script.AppendLine($"    clip = realesrgan(clip, model=\"{encodingOptions.VsUpscaleModel}\", scale=2)");
-            script.AppendLine($"    clip = clip.resize.Bicubic(clip, width={encodingOptions.VsTargetWidth}, height={encodingOptions.VsTargetHeight}, format=vs.RGBS, matrix_s='709')");
+            script.AppendLine("    import realesrgan");
+            script.AppendLine("    # Convert to RGB float for AI processing");
+            script.AppendLine("    clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in_s='709')");
+            script.AppendLine($"    clip = realesrgan(clip, model=\"{options.VsUpscaleModel}\", scale=2)");
+            script.AppendLine($"    clip = core.resize.Bicubic(clip, width={options.VsTargetWidth}, height={options.VsTargetHeight}, format=vs.RGBS, matrix_s='709')");
             script.AppendLine("except Exception as e:");
             script.AppendLine("    print(f\"Real-ESRGAN failed: {e}, using bicubic fallback\")");
-            script.AppendLine($"    clip = clip.resize.Bicubic(width={encodingOptions.VsTargetWidth}, height={encodingOptions.VsTargetHeight})");
+            script.AppendLine($"    clip = core.resize.Bicubic(clip, width={options.VsTargetWidth}, height={options.VsTargetHeight})");
             script.AppendLine();
         }
         else
         {
-            // Default: bicubic scaling
-            script.AppendLine($"# Simple bicubic upscaling (no AI upscaling)");
-            script.AppendLine($"clip = clip.resize.Bicubic(width={encodingOptions.VsTargetWidth}, height={encodingOptions.VsTargetHeight})");
+            // Simple bicubic scaling
+            script.AppendLine("# Bicubic upscaling");
+            script.AppendLine($"clip = core.resize.Bicubic(clip, width={options.VsTargetWidth}, height={options.VsTargetHeight})");
             script.AppendLine();
         }
 
-        // Frame interpolation based on preset
+        // Apply frame interpolation based on preset
         if (preset.Contains("interpolat", StringComparison.OrdinalIgnoreCase) ||
-            encodingOptions.VsInterpolationModel.Contains("rife", StringComparison.OrdinalIgnoreCase))
+            options.VsInterpolationModel.Contains("rife", StringComparison.OrdinalIgnoreCase))
         {
-            var fpsNum = encodingOptions.VsTargetFpsNum;
-            var fpsDen = encodingOptions.VsTargetFpsDen;
+            var fpsNum = options.VsTargetFpsNum;
+            var fpsDen = options.VsTargetFpsDen;
 
             script.AppendLine($"# Frame interpolation with RIFE ({fpsNum}/{fpsDen} fps)");
             script.AppendLine("try:");
-            script.AppendLine("    from vsrife import rife");
+            script.AppendLine("    from vsrife import RIFE");
+            script.AppendLine("    # Try with TensorRT first (GPU acceleration)");
             script.AppendLine("    try:");
-            script.AppendLine($"        clip = rife(clip, model=\"{encodingOptions.VsInterpolationModel}\", factor_num={fpsNum}, factor_den={fpsDen}, trt=True, sc=True)");
-            script.AppendLine("    except:");
-            script.AppendLine($"        clip = rife(clip, model=\"{encodingOptions.VsInterpolationModel}\", factor_num={fpsNum}, factor_den={fpsDen}, trt=False, sc=True)");
+            script.AppendLine($"        clip = RIFE(clip, model=\"{options.VsInterpolationModel}\", factor_num={fpsNum}, factor_den={fpsDen}, trt=True, sc=True)");
+            script.AppendLine("    except Exception as e:");
+            script.AppendLine("        print(f\"RIFE with TensorRT failed: {e}, trying CPU mode\")");
+            script.AppendLine($"        clip = RIFE(clip, model=\"{options.VsInterpolationModel}\", factor_num={fpsNum}, factor_den={fpsDen}, trt=False, sc=True)");
             script.AppendLine("except Exception as e:");
-            script.AppendLine($"    print(f\"RIFE interpolation failed: {{e}}, keeping original framerate\")");
+            script.AppendLine("    print(f\"RIFE failed: {e}, keeping original framerate\")");
             script.AppendLine();
         }
 
         // Convert to output format
-        var outPixelFormat = encodingOptions.VsPixelFormat ?? "YUV420P8";
-        script.AppendLine("# Convert to output format");
-        script.AppendLine($"clip = clip.resize.Bicubic(format=vs.{outPixelFormat}, matrix_s='709')");
+        var outPixelFormat = options.VsPixelFormat ?? "YUV420P8";
+        script.AppendLine("# Convert to output pixel format");
+        script.AppendLine($"clip = core.resize.Bicubic(clip, format=vs.{outPixelFormat}, matrix_s='709')");
         script.AppendLine();
+
+        // Set output
         script.AppendLine("# Set output");
         script.AppendLine("clip.set_output()");
 
         // Write script to temp file
-        var scriptPath = Path.Combine(_transcodeTempPath, $"vsfilter-script-{Guid.NewGuid():N}.vpy");
+        var scriptPath = Path.Combine(_transcodeTempPath, $"vsfilter-{Guid.NewGuid():N}.vpy");
         File.WriteAllText(scriptPath, script.ToString());
         _tempFiles.Add(scriptPath);
 
         return scriptPath;
     }
 
+    /// <summary>
+    /// Escapes a string for use in Python code.
+    /// </summary>
+    private static string EscapePythonString(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("'", "\\'");
+    }
+
+    /// <summary>
+    /// Builds the FFmpeg command-line arguments using the VapourSynth demuxer.
+    /// </summary>
     private string BuildFfmpegArgs(
-        string sourcePath,
-        string outputPath,
-        EncodingOptions encodingOptions,
         string scriptPath,
+        string outputPath,
+        string sourcePath,
+        EncodingOptions options,
+        int audioStreamIndex,
         string videoCodec,
         string audioCodec,
         int? videoBitrate,
@@ -292,64 +358,65 @@ public sealed class VsFilterPipeline : IDisposable
             args.Append(' ');
         }
 
-        // Input
+        // Use VapourSynth demuxer as input
+        // The script handles reading the source, so we just point at the .vpy file
+        args.Append($"-f vapoursynth -i \"{scriptPath}\" ");
+
+        // Audio from the source file (not the VS script)
+        // FFmpeg can have multiple inputs - we need to map audio from the source
         args.Append($"-i \"{sourcePath}\" ");
 
-        // VapourSynth filter - the key feature!
-        args.Append($"-vf \"vapoursynth=file={scriptPath}");
-        if (encodingOptions.VsThreads > 0)
-        {
-            args.Append($":threads={encodingOptions.VsThreads}");
-        }
-        args.Append('"');
-        args.Append(' ');
+        // Map: video from VS script (output 0:v), audio from source (input 1:a:index)
+        args.Append("-map 0:v:0 ");
+        args.Append($"-map 1:a:{audioStreamIndex} ");
 
         // Video codec
-        args.Append($"-c:v {videoCodec}");
+        args.Append($"-c:v {videoCodec} ");
 
-        // Custom encoder arguments or defaults
-        if (!string.IsNullOrWhiteSpace(encodingOptions.VsEncoderArgs))
+        // Custom encoder args or defaults
+        if (!string.IsNullOrWhiteSpace(options.VsEncoderArgs))
         {
-            args.Append($" {encodingOptions.VsEncoderArgs}");
+            args.Append($"{options.VsEncoderArgs} ");
+        }
+        else if (videoBitrate.HasValue)
+        {
+            args.Append($"-b:v {videoBitrate.Value}k -maxrate {videoBitrate.Value}k -bufsize {videoBitrate.Value * 2}k ");
         }
         else
         {
-            // High quality defaults
-            if (videoBitrate.HasValue)
-            {
-                args.Append($" -b:v {videoBitrate.Value}k");
-                args.Append($" -maxrate {videoBitrate.Value}k");
-                args.Append($" -bufsize {videoBitrate.Value * 2}k");
-            }
-            else
-            {
-                args.Append(" -preset slow -crf 18");
-            }
+            args.Append("-preset slow -crf 18 ");
         }
-        args.Append(' ');
 
         // Audio codec
-        args.Append($"-c:a {audioCodec}");
+        args.Append($"-c:a {audioCodec} ");
         if (audioBitrate.HasValue)
         {
-            args.Append($" -b:a {audioBitrate.Value}k");
+            args.Append($"-b:a {audioBitrate.Value}k ");
         }
-        args.Append(' ');
 
         // HLS output
-        args.Append("-f hls");
-        args.Append($" -hls_time {segmentLength}");
-        args.Append($" -hls_segment_type {(segmentContainer.Equals("mp4", StringComparison.OrdinalIgnoreCase) ? "fmp4" : "mpegts")}");
+        args.Append("-f hls ");
+        args.Append($"-hls_time {segmentLength} ");
+
+        var isFmp4 = segmentContainer.Equals("mp4", StringComparison.OrdinalIgnoreCase);
+        args.Append($"-hls_segment_type {(isFmp4 ? "fmp4" : "mpegts")} ");
 
         var directory = Path.GetDirectoryName(outputPath) ?? string.Empty;
         var segName = Path.GetFileNameWithoutExtension(outputPath);
-        var ext = segmentContainer.Equals("mp4", StringComparison.OrdinalIgnoreCase) ? ".m4s" : ".ts";
+        var ext = isFmp4 ? ".m4s" : ".ts";
+        var initName = isFmp4 ? $"{segName}-init.m4s" : string.Empty;
 
-        args.Append($" -hls_segment_filename \"{directory}/{segName}%d{ext}\"");
-        args.Append(" -hls_list_size 0");
-        args.Append($" -max_muxing_queue_size {encodingOptions.MaxMuxingQueueSize}");
-        args.Append(" -copyts -avoid_negative_ts disabled");
-        args.Append($" -y \"{outputPath}\"");
+        if (!string.IsNullOrEmpty(initName))
+        {
+            args.Append($"-hls_fmp4_init_filename \"{initName}\" ");
+        }
+
+        args.Append($"-hls_segment_filename \"{directory}/{segName}%d{ext}\" ");
+        args.Append("-hls_list_size 0 ");
+        args.Append($"-max_muxing_queue_size {options.MaxMuxingQueueSize} ");
+        args.Append("-y \"");
+        args.Append(outputPath);
+        args.Append('"');
 
         return args.ToString();
     }
