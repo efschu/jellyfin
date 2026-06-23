@@ -156,16 +156,20 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libdav1d.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpl.so* /usr/lib/x86_64-linux-gnu/
 
-# Copy Python 3.10 runtime (the version VapourSynth was built against)
-COPY --from=ffmpeg-builder /usr/bin/python3.10 /usr/bin/python3.10
-COPY --from=ffmpeg-builder /usr/lib/python3.10/ /usr/lib/python3.10/
-COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libpython3.10.so* /usr/lib/x86_64-linux-gnu/
+# Copy VapourSynth C headers (needed for pip install to build extension)
+COPY --from=ffmpeg-builder /usr/local/include/vapoursynth/ /usr/local/include/vapoursynth/
 
-# Copy VapourSynth Python module
-COPY --from=ffmpeg-builder /usr/local/lib/python3.10/ /usr/local/lib/python3.10/
-
-# Copy headers
-COPY --from=ffmpeg-builder /usr/local/include/ /usr/local/include/
+# Install VapourSynth Python module via pip (built against system Python 3.11)
+# This rebuilds the .so against the runtime Python, fixing version mismatch
+RUN pip3 install --break-system-packages --no-build-isolation \
+        --global-option=build_ext \
+        --global-option="-I/usr/local/include" \
+        cython numpy && \
+    pip3 install --break-system-packages --no-build-isolation \
+        --global-option=build_ext \
+        --global-option="-I/usr/local/include" \
+        vapoursynth && \
+    ldconfig
 
 # Create proper symlinks for shared libraries (handle .so.X.Y.Z pattern)
 RUN ldconfig && \
@@ -184,8 +188,6 @@ RUN ldconfig && \
 
 # Environment variables for VapourSynth and FFmpeg
 ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/lib/x86_64-linux-gnu"
-ENV PYTHONHOME="/usr/lib/python3.10"
-ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages:/usr/lib/python3.10/dist-packages"
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 
