@@ -134,9 +134,8 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libtheora.so* /usr/lib/x86_
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvorbis.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libogg.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86_64-linux-gnu/
-# Copy libpython3.10 and Python 3.10 stdlib that VapourSynth was built against
-COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libpython3.10* /usr/lib/x86_64-linux-gnu/
-COPY --from=ffmpeg-builder /usr/lib/python3.10/ /usr/lib/python3.10/
+# Python 3.10 libs are NOT needed - we'll build VapourSynth against Python 3.11 in the next step
+# (libvapoursynth.so from builder is Python 3.10, will be replaced)
 COPY --from=ffmpeg-builder /usr/local/include/* /usr/local/include/
 # Create proper symlinks for shared libraries
 RUN ldconfig \
@@ -161,14 +160,9 @@ RUN LDFLAGS="-L/usr/local/lib" pip3 install --break-system-packages vapoursynth
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/local/bin/ffprobe
 ENV LD_LIBRARY_PATH=/usr/local/lib
-ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10/site-packages
-# Create symlinks to match Debian Python 3.10 layout (lib/lib/python3.10/)
-RUN mkdir -p /usr/lib/python3.10/lib && \
-    cd /usr/lib/python3.10/lib && \
-    ln -sf ../python3.10 python3.10 && \
-    ln -sf ../python3.10.zip python310.zip 2>/dev/null || true
-ENV PYTHONHOME=/usr/lib/python3.10/lib
-ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages:/usr/lib/python3.10
+# Build VapourSynth against the runtime Python (3.11)
+# This ensures libvapoursynth.so uses libpython3.11 which is available
+ENV PYTHONPATH=/usr/local/lib/python3.11/site-packages
 
 # Create directories for VapourSynth scripts and models
 RUN mkdir -p /config/vapoursynth \
