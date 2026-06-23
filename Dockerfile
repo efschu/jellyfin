@@ -29,8 +29,8 @@ RUN apt-get update && apt-get install -y \
 # Set up Python 3.10 venv for VapourSynth build
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir numpy cython
+RUN pip install --no-cache-dir --upgrade pip && \\
+    pip install --no-cache-dir numpy "cython==0.29.37"
 
 # Create build directory
 RUN mkdir -p /build
