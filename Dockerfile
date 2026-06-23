@@ -115,9 +115,9 @@ FROM jellyfin/jellyfin:10.9
 
 USER root
 
-# Install runtime dependencies
+# Install runtime dependencies including build tools for VapourSynth
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip python3-dev \
+    python3 python3-pip python3-dev python3-venv python3-numpy \
     libdrm2 libva2 libva-drm2 libasound2 libxv1 libvpl2 \
     libxcb1 libxcb-shm0 libxcb-xfixes0 \
     libx11-6 libxext6 \
@@ -126,6 +126,7 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libass9 libfreetype6 libfribidi0 \
     libfontconfig1 \
+    autoconf automake libtool pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -156,20 +157,23 @@ COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libsndio.so.7* /usr/lib/x86
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libdav1d.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=ffmpeg-builder /usr/lib/x86_64-linux-gnu/libvpl.so* /usr/lib/x86_64-linux-gnu/
 
-# Copy VapourSynth C headers (needed for pip install to build extension)
-COPY --from=ffmpeg-builder /usr/local/include/vapoursynth/ /usr/local/include/vapoursynth/
-
-# Install VapourSynth Python module via pip (built against system Python 3.11)
-# This rebuilds the .so against the runtime Python, fixing version mismatch
-RUN pip3 install --break-system-packages --no-build-isolation \
-        --global-option=build_ext \
-        --global-option="-I/usr/local/include" \
-        cython numpy && \
-    pip3 install --break-system-packages --no-build-isolation \
-        --global-option=build_ext \
-        --global-option="-I/usr/local/include" \
-        vapoursynth && \
-    ldconfig
+# Build VapourSynth from source against system Python 3.11
+# This ensures the C extension matches the runtime Python version
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir cython numpy meson-python && \
+    git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git /tmp/vs && \
+    cd /tmp/vs && \
+    cp -r /usr/local/include/vapoursynth/include/. src/cython/ 2>/dev/null || true && \
+    sed -i "s/^\(cython_args.*=\).*/\\1[--3plus]/" Makefile.meson 2>/dev/null || true && \
+    meson setup build --prefix=/usr/local \
+        -Dauto_features=disabled \
+        -Dpython=enabled \
+        -Dpython.platlibdir=lib/python3/dist-packages && \
+    cd build && \
+    ninja && \
+    ninja install && \
+    ldconfig && \
+    rm -rf /tmp/vs
 
 # Create proper symlinks for shared libraries (handle .so.X.Y.Z pattern)
 RUN ldconfig && \
