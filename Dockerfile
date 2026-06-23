@@ -101,7 +101,7 @@ RUN ./configure \
     --enable-libx264 --enable-libx265 --enable-libvpx \
     --enable-libmp3lame --enable-libopus --enable-libass \
     --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
-    --enable-libvpl --enable-libdav1d --enable-libaom \
+    --enable-libdav1d --enable-libaom \\
     --enable-vapoursynth \
     --extra-cflags="-I/usr/local/include" \
     --extra-ldflags="-L/usr/local/lib" \
