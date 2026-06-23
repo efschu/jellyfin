@@ -109,13 +109,7 @@ RUN ./configure \
     && make -j4 \
     && make install \
     && ldconfig \
-    # Force enable the VapourSynth filter (configure doesn't auto-enable it despite extern+dps)
-    && sed -i 's/^!CONFIG_VAPOURSYNTH_FILTER=.*/CONFIG_VAPOURSYNTH_FILTER=yes/' ffbuild/config.mak \
-    && sed -i 's/^CONFIG_VAPOURSYNTH_FILTER=.*/CONFIG_VAPOURSYNTH_FILTER=yes/' ffbuild/config.mak \
-    && make -j4 \
-    && make install \
-    && ldconfig \
-    # Verify VapourSynth demuxer and filter are available
+    # Verify VapourSynth is available
     && /usr/local/bin/ffmpeg -version | head -1 \
     && /usr/local/bin/ffmpeg -demuxers 2>/dev/null | grep -i vapoursynth
 
